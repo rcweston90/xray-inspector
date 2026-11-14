@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portable X-ray demo</title>
+<style>
+  :root{font-family:system-ui,sans-serif;color:#172033;background:#f5f7fb}body{max-width:960px;margin:0 auto;padding:48px 24px}header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:48px}h1{font-size:clamp(32px,7vw,72px);line-height:1;margin:0}p{max-width:62ch;line-height:1.6}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}.card{padding:24px;border:1px solid #b8c2d8;border-radius:12px;background:#fff;box-shadow:0 8px 24px #18213a12}.card h2{margin:0 0 12px}.start{min-height:44px;padding:10px 16px;border:0;border-radius:6px;background:#172033;color:#fff;font:600 15px system-ui;cursor:pointer}.start:focus-visible{outline:3px solid #b65c00;outline-offset:3px}.compact-example{height:30px;margin-top:8px}label{display:grid;gap:8px;margin-top:24px}input{min-height:44px;padding:0 12px;font:inherit}@media(max-width:560px){body{padding:24px 16px}header{align-items:flex-start;flex-direction:column;margin-bottom:24px}}
+</style>
+<body>
+<header data-xray-component="DemoHeader"><div><small>FRAMEWORK-FREE PROTOTYPE</small><h1>X-ray</h1></div><button class="start" type="button">Start inspecting</button></header>
+<main data-xray-component="DemoGallery"><p>Hover to measure. Click to pin without activating the page. Exported JSON intentionally leaves out this copy, the field value below, page URLs, classes, ids, images, and DOM HTML.</p><div class="grid"><article class="card" data-xray-component="EvidenceCard"><h2>Honest provenance</h2><p>Resolved browser values are labelled computed. Component names appear only when the host declares them.</p></article><article class="card"><h2>Actionable diagnostics</h2><p>The compact target below is deliberately undersized so the quick check has something truthful to find.</p><button class="compact-example" type="button">Compact target</button></article></div><label>Private test value<input value="This must never enter evidence"></label></main>
+<script type="module">
+/* XRAY_RUNTIME_START */
+const SIDES = ['top', 'right', 'bottom', 'left'];
+
+const round = (value) => Math.round(value * 10) / 10;
+const number = (value) => round(Number.parseFloat(value) || 0);
+const sides = (style, property) => Object.fromEntries(SIDES.map((side) => [
+  side,
+  number(style.getPropertyValue(property === 'border' ? `border-${side}-width` : `${property}-${side}`)),
+]));
+
+function boundary(element) {
+  const owner = element.closest('[data-xray-component]');
+  return owner?.getAttribute('data-xray-component')?.trim() || null;
+}
+
+function safeSelector(element) {
+  const marked = element.closest('[data-xray-component]');
+  if (marked) return `[data-xray-component="${CSS.escape(marked.getAttribute('data-xray-component') || '')}"]`;
+  const parts = [];
+  for (let node = element; node && node !== document.body && parts.length < 5; node = node.parentElement) {
+    const tag = node.tagName.toLowerCase();
+    const siblings = node.parentElement ? [...node.parentElement.children].filter((item) => item.tagName === node.tagName) : [];
+    parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(node) + 1})` : tag);
+  }
+  return parts.join(' > ');
+}
+
+function hasAccessibleName(element) {
+  if (element.getAttribute('aria-label')?.trim() || element.getAttribute('aria-labelledby')?.trim()) return true;
+  if (element instanceof HTMLImageElement) return Boolean(element.alt.trim());
+  if (element instanceof HTMLInputElement) {
+    return Boolean(element.labels?.length || element.placeholder.trim() || (element.type === 'button' && element.value.trim()));
+  }
+  if (element instanceof HTMLButtonElement || element instanceof HTMLAnchorElement) return Boolean(element.textContent?.trim());
+  return true;
+}
+
+const interactive = (element) => element.matches('a[href],button,input,select,textarea,summary,[role="button"],[role="link"],[tabindex]');
+
+function parseRgb(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^rgba?\(\s*([\d.]+)[, ]+\s*([\d.]+)[, ]+\s*([\d.]+)(?:\s*[,/]\s*([\d.]+)%?)?\s*\)$/i);
+  if (!match) return null;
+  const alpha = match[4] === undefined ? 1 : Number(match[4]) / (value.includes('%') ? 100 : 1);
+  return { channels: match.slice(1, 4).map(Number), alpha };
+}
+
+const luminance = (channels) => channels.map((channel) => {
+  const value = channel / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+
+function contrast(foreground, background) {
+  const fg = parseRgb(foreground);
+  const bg = parseRgb(background);
+  if (!fg || !bg || fg.alpha < 1 || bg.alpha < 1) return null;
+  const [light, dark] = [luminance(fg.channels), luminance(bg.channels)].sort((a, b) => b - a);
+  return round((light + 0.05) / (dark + 0.05));
+}
+
+/** Read only browser-resolved values. It does not claim authored rule or token provenance. */
+export function measureElement(element) {
+  if (!(element instanceof Element)) throw new TypeError('measureElement expects an Element');
+  const rect = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  const component = boundary(element);
+  return {
+    schemaVersion: 1,
+    target: {
+      tag: element.tagName.toLowerCase(),
+      component,
+      selector: safeSelector(element),
+      boundaryProvenance: component ? 'declared' : 'unavailable',
+    },
+    viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+    geometry: {
+      x: round(rect.x), y: round(rect.y), width: round(rect.width), height: round(rect.height),
+      margin: sides(style, 'margin'), padding: sides(style, 'padding'), border: sides(style, 'border'),
+      display: style.display,
+      gap: { row: number(style.rowGap), column: number(style.columnGap) },
+      provenance: 'computed',
+    },
+    typography: {
+      family: style.fontFamily, size: number(style.fontSize), weight: style.fontWeight,
+      lineHeight: style.lineHeight === 'normal' ? null : number(style.lineHeight),
+      letterSpacing: style.letterSpacing === 'normal' ? 0 : number(style.letterSpacing),
+      provenance: 'computed',
+    },
+    colour: { foreground: style.color, background: style.backgroundColor, provenance: 'computed' },
+    semantics: {
+      interactive: interactive(element),
+      accessibleNamePresent: hasAccessibleName(element),
+      disabled: element.matches(':disabled,[aria-disabled="true"]'),
+      role: element.getAttribute('role') || null,
+    },
+    constraints: {
+      viewportOverflow: { right: round(Math.max(0, rect.right - window.innerWidth)), left: round(Math.max(0, -rect.left)) },
+      contentOverflow: {
+        horizontal: element.scrollWidth > element.clientWidth + 1,
+        vertical: element.scrollHeight > element.clientHeight + 1,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+      },
+    },
+  };
+}
+
+/** Small, explainable diagnostics derived only from the reading. */
+export function analyzeReading(reading) {
+  const findings = [];
+  const add = (id, severity, title, detail) => findings.push({ id, severity, title, detail });
+  if (reading.semantics?.interactive && !reading.semantics.accessibleNamePresent) {
+    add('accessible-name', 'error', 'Interactive element has no name', 'Add visible text or an explicit accessible name.');
+  }
+  if (reading.semantics?.interactive && (reading.geometry.width < 44 || reading.geometry.height < 44)) {
+    add('target-size', 'warning', 'Target is smaller than 44 × 44px', `${reading.geometry.width} × ${reading.geometry.height}px measured.`);
+  }
+  if (reading.constraints?.viewportOverflow.right > 0 || reading.constraints?.viewportOverflow.left > 0) {
+    add('viewport-overflow', 'warning', 'Element extends outside the viewport', 'Check responsive sizing, positioning, and transforms.');
+  }
+  const overflow = reading.constraints?.contentOverflow;
+  if ((overflow?.horizontal && ['hidden', 'clip'].includes(overflow.overflowX)) || (overflow?.vertical && ['hidden', 'clip'].includes(overflow.overflowY))) {
+    add('clipped-content', 'warning', 'Content may be clipped', 'The content is larger than its box and overflow clips it.');
+  }
+  const ratio = contrast(reading.colour.foreground, reading.colour.background);
+  const large = reading.typography.size >= 24 || (reading.typography.size >= 18.66 && Number(reading.typography.weight) >= 700);
+  if (ratio !== null && ratio < (large ? 3 : 4.5)) {
+    add('text-contrast', 'error', 'Text contrast may fail WCAG AA', `${ratio}:1 computed against this element’s opaque background.`);
+  }
+  if (reading.typography.lineHeight !== null && reading.typography.lineHeight < reading.typography.size * 1.2) {
+    add('line-height', 'info', 'Line height is tightly set', `${reading.typography.lineHeight}px on ${reading.typography.size}px type.`);
+  }
+  return { findings, contrastRatio: ratio, checkedAt: 'computed-reading' };
+}
+
+/** Safe-by-default evidence: no text, HTML, form values, URLs, classes, ids, or images. */
+export function createEvidence(reading, options = {}) {
+  const evidence = {
+    schemaVersion: reading.schemaVersion,
+    capturedAt: new Date().toISOString(),
+    target: reading.target,
+    viewport: reading.viewport,
+    geometry: reading.geometry,
+    typography: reading.typography,
+    colour: reading.colour,
+    semantics: reading.semantics,
+    constraints: reading.constraints,
+    diagnostics: analyzeReading(reading),
+    privacy: {
+      text: 'omitted', html: 'omitted', formValues: 'omitted', urls: 'omitted',
+      identifiers: 'omitted', images: 'omitted', telemetry: 'none',
+    },
+  };
+  if (options.includePageOrigin === true) {
+    evidence.page = { origin: location.origin, pathname: location.pathname };
+    evidence.privacy.urls = 'origin-and-pathname-only';
+  }
+  return evidence;
+}
+
+export function downloadEvidence(evidence, filename = 'xray-evidence.json') {
+  const blob = new Blob([`${JSON.stringify(evidence, null, 2)}\n`], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Mount a framework-free overlay. Returns an idempotent cleanup function. */
+export function mountXRay(options = {}) {
+  const root = document.createElement('div');
+  root.dataset.xrayPortable = '';
+  const shadow = root.attachShadow({ mode: 'open' });
+  shadow.innerHTML = `<style>
+    :host{all:initial} .box{position:fixed;z-index:2147483646;pointer-events:none;border:2px solid #ffb000;background:color-mix(in srgb,#ffb000 10%,transparent);box-sizing:border-box}
+    .panel{position:fixed;z-index:2147483647;right:16px;bottom:16px;width:min(360px,calc(100vw - 32px));box-sizing:border-box;background:#111;color:#fff;border:1px solid #777;border-radius:8px;padding:16px;font:13px/1.5 ui-monospace,SFMono-Regular,monospace;box-shadow:0 8px 32px #0008}
+    strong{display:block;font-size:14px}.meta{color:#ccc;margin:4px 0 10px}.facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0 0 10px}.facts dt{color:#aaa}.facts dd{margin:0;text-align:right}.findings{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:4px}.findings li{border-left:3px solid #999;padding-left:8px}.findings [data-severity="error"]{border-color:#ff6b6b}.findings [data-severity="warning"]{border-color:#ffcf66}.findings small{display:block;color:#bbb}.actions{display:flex;gap:8px;flex-wrap:wrap}button{min-height:44px;border:1px solid #999;border-radius:5px;background:#222;color:#fff;padding:8px 12px;font:inherit;cursor:pointer}button:focus-visible{outline:3px solid #ffcf66;outline-offset:2px}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+  </style><div class="box" hidden></div><section class="panel" aria-label="X-ray inspector"><strong>Move over an element</strong><div class="meta">Click to pin · Escape to unpin</div><dl class="facts"></dl><ul class="findings" aria-label="Diagnostics"></ul><div class="actions"><button class="copy" type="button" disabled>Copy safe JSON</button><button class="export" type="button" disabled>Download JSON</button><button class="close" type="button">Close X-ray</button></div><div class="status" role="status" aria-live="polite"></div></section>`;
+  document.documentElement.append(root);
+  const box = shadow.querySelector('.box');
+  const title = shadow.querySelector('strong');
+  const meta = shadow.querySelector('.meta');
+  const exportButton = shadow.querySelector('.export');
+  const copyButton = shadow.querySelector('.copy');
+  const facts = shadow.querySelector('.facts');
+  const findings = shadow.querySelector('.findings');
+  const status = shadow.querySelector('.status');
+  let selected = null;
+  let pinned = false;
+  let reading = null;
+  let stopped = false;
+
+  const paint = (element) => {
+    if (!element || root.contains(element)) return;
+    selected = element;
+    reading = measureElement(element);
+    const rect = element.getBoundingClientRect();
+    Object.assign(box.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
+    box.hidden = false;
+    title.textContent = reading.target.component || reading.target.tag;
+    meta.textContent = `${reading.geometry.width} × ${reading.geometry.height}px · ${reading.target.boundaryProvenance} boundary${pinned ? ' · pinned' : ''}`;
+    const pairs = [
+      ['Display', reading.geometry.display],
+      ['Padding', SIDES.map((side) => reading.geometry.padding[side]).join(' / ')],
+      ['Margin', SIDES.map((side) => reading.geometry.margin[side]).join(' / ')],
+      ['Type', `${reading.typography.size}/${reading.typography.lineHeight ?? 'normal'}px`],
+    ];
+    facts.replaceChildren(...pairs.flatMap(([term, value]) => {
+      const dt = document.createElement('dt'); dt.textContent = term;
+      const dd = document.createElement('dd'); dd.textContent = value;
+      return [dt, dd];
+    }));
+    const diagnostics = analyzeReading(reading);
+    findings.replaceChildren(...(diagnostics.findings.length ? diagnostics.findings : [{ severity: 'ok', title: 'No quick-check findings', detail: 'Review context before treating this as a pass.' }]).map((finding) => {
+      const item = document.createElement('li'); item.dataset.severity = finding.severity;
+      item.textContent = finding.title; const detail = document.createElement('small'); detail.textContent = finding.detail; item.append(detail); return item;
+    }));
+    exportButton.disabled = false;
+    copyButton.disabled = false;
+  };
+  const onMove = (event) => { if (!pinned) paint(event.target); };
+  const onClick = (event) => {
+    if (root.contains(event.target)) return;
+    event.preventDefault(); event.stopPropagation(); pinned = true; paint(event.target);
+  };
+  const onKey = (event) => {
+    if (event.key !== 'Escape') return;
+    if (pinned) { pinned = false; if (selected) paint(selected); }
+    else cleanup();
+  };
+  const onViewport = () => { if (selected) paint(selected); };
+  const cleanup = () => {
+    if (stopped) return; stopped = true;
+    document.removeEventListener('pointermove', onMove, true); document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true); window.removeEventListener('scroll', onViewport, true);
+    window.removeEventListener('resize', onViewport); root.remove(); options.onClose?.();
+  };
+  document.addEventListener('pointermove', onMove, true); document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey, true); window.addEventListener('scroll', onViewport, true); window.addEventListener('resize', onViewport);
+  shadow.querySelector('.close').addEventListener('click', cleanup);
+  exportButton.addEventListener('click', () => reading && downloadEvidence(createEvidence(reading)));
+  copyButton.addEventListener('click', async () => {
+    if (!reading) return;
+    try { await navigator.clipboard.writeText(`${JSON.stringify(createEvidence(reading), null, 2)}\n`); status.textContent = 'Safe JSON copied.'; }
+    catch { status.textContent = 'Clipboard unavailable; use Download JSON.'; }
+  });
+  return cleanup;
+}
+/* XRAY_RUNTIME_END */
+let stop;
+document.querySelector('.start').addEventListener('click', () => { stop?.(); stop = mountXRay({ onClose: () => { stop = undefined; } }); });
+</script>
+</body>
+</html>

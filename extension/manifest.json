@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "X-ray Inspector (experimental)",
+  "description": "Inspect the active page only after an explicit toolbar click.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "88",
+  "permissions": ["activeTab", "scripting"],
+  "background": {
+    "service_worker": "service-worker.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Toggle X-ray Inspector on this page"
+  }
+}

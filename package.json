@@ -1,0 +1,16 @@
+{
+  "name": "xray-inspector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./src/xray.d.ts", "import": "./src/xray.mjs" } },
+  "scripts": {
+    "build": "npm run build:demo && npm run build:extension",
+    "build:demo": "node scripts/build-demo.mjs",
+    "build:extension": "node scripts/build-extension.mjs",
+    "check": "npm run build && npm test && git diff --exit-code",
+    "test": "node --test test/*.test.mjs"
+  },
+  "files": ["src", "demo", "extension"],
+  "sideEffects": false
+}

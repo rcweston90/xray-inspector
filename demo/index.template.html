@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portable X-ray demo</title>
+<style>
+  :root{font-family:system-ui,sans-serif;color:#172033;background:#f5f7fb}body{max-width:960px;margin:0 auto;padding:48px 24px}header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:48px}h1{font-size:clamp(32px,7vw,72px);line-height:1;margin:0}p{max-width:62ch;line-height:1.6}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px}.card{padding:24px;border:1px solid #b8c2d8;border-radius:12px;background:#fff;box-shadow:0 8px 24px #18213a12}.card h2{margin:0 0 12px}.start{min-height:44px;padding:10px 16px;border:0;border-radius:6px;background:#172033;color:#fff;font:600 15px system-ui;cursor:pointer}.start:focus-visible{outline:3px solid #b65c00;outline-offset:3px}.compact-example{height:30px;margin-top:8px}label{display:grid;gap:8px;margin-top:24px}input{min-height:44px;padding:0 12px;font:inherit}@media(max-width:560px){body{padding:24px 16px}header{align-items:flex-start;flex-direction:column;margin-bottom:24px}}
+</style>
+<body>
+<header data-xray-component="DemoHeader"><div><small>FRAMEWORK-FREE PROTOTYPE</small><h1>X-ray</h1></div><button class="start" type="button">Start inspecting</button></header>
+<main data-xray-component="DemoGallery"><p>Hover to measure. Click to pin without activating the page. Exported JSON intentionally leaves out this copy, the field value below, page URLs, classes, ids, images, and DOM HTML.</p><div class="grid"><article class="card" data-xray-component="EvidenceCard"><h2>Honest provenance</h2><p>Resolved browser values are labelled computed. Component names appear only when the host declares them.</p></article><article class="card"><h2>Actionable diagnostics</h2><p>The compact target below is deliberately undersized so the quick check has something truthful to find.</p><button class="compact-example" type="button">Compact target</button></article></div><label>Private test value<input value="This must never enter evidence"></label></main>
+<script type="module">
+/* XRAY_RUNTIME_START */
+/* XRAY_RUNTIME_END */
+let stop;
+document.querySelector('.start').addEventListener('click', () => { stop?.(); stop = mountXRay({ onClose: () => { stop = undefined; } }); });
+</script>
+</body>
+</html>
